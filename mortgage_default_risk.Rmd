@@ -1,0 +1,437 @@
+---
+title: "Visual Drivers of Mortgage Default Risk: Evidence from Fannie Mae Loan Data"
+author: Varnika Bethireddy
+format: html
+output: bookdown::html_document2
+toc: false
+editor: visual
+---
+
+```{=html}
+<style type="text/css">
+  .title {
+    text-align: left;
+}
+body{ /* Normal  */
+      font-size: 16px;
+      margin: 2.5cm;
+      top: 1.5cm;
+      text-align: justify;
+  }
+  .caption {
+    font-size: big;
+    text-align: center;
+    position: above;
+}
+</style>
+```
+
+```{css plotly-caption, echo = FALSE}
+div.figure {
+  display: table;
+}
+div.figure p {
+  display: table-caption;
+  caption-side: top;
+}
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+------------------------------------------------------------------------
+
+[**Introduction** :]{.underline}
+
+Fannie Mae guarantees the payment of the mortgage loans it securitizes. Defaults by borrowers directly impact the company's financial risk and performance. Therefore, it is essential to understand the borrower and loan characteristics most likely to lead to defaults to effectively manage the risk.
+
+[**Report:**]{.underline}
+
+The report analyzes loan-level data from two non-consecutive time periods: 2007Q4 (pre-financial crisis) and 2019Q4 (post-financial crisis) to understand the evolution of borrower risk profile and default behavior. By evaluating the loan characteristics such as credit score, loan to value, occupancy, and interest rates, the most influential factors for default risk are determined. In addition, the trends in default rates are also analyzed to provide context for the mortgage market performance.
+
+<br>
+
+### Analysis {.unnumbered}
+
+```{r, include = FALSE}
+library(plotly)
+library(scales)
+library(tidyverse)
+library(gganimate)
+
+
+
+```
+
+[**Default rates have remained stable in the last few years:**]{.underline}
+
+The interactive time series chart demonstrates default rates from 2020 to 2023 are relatively stable, with minimal variation from one quarter to the next. This demonstrates that the recent mortgage performance has been **more predictable** than during previous stress periods. In business terms, this demonstrates stronger underwriting discipline and a **more stable credit environment**, even though recent rises must be monitored to identify potential future problems. In the time series chart, the default rate is defined at the portfolio level on a quarterly level. Therefore, this chart provides context for the subsequent comparison of individual loans. The default rates vary within a narrow range (approximately 0.1% to 0.2%). This implies low volatility in default rates. The quarter-to-quarter variation is also very low, being less than 0.05%. This implies stability in borrower behavior.
+
+```{r, echo = FALSE, fig.width=10, fig.height = 4, fig.cap="Mortgage Default Rate Trend (2020–2023)"}
+
+#The Default rates have remained stable in recent years
+# Load data
+ts <- read.csv("default_rate_ts.csv")
+
+# Clean data
+colnames(ts) <- c("date", "default_rate")
+ts$date <- as.Date(ts$date)
+ts <- ts[order(ts$date), ]
+
+# Create trend variable
+ts$change <- c(NA, diff(ts$default_rate))
+ts$trend <- ifelse(ts$change > 0, "Increasing",
+                   ifelse(ts$change < 0, "Decreasing", "Stable"))
+
+# Plot interactive chart
+plot_ly(
+  data = ts,
+  x = ~date,
+  y = ~default_rate,
+  type = "scatter",
+  mode = "lines+markers",
+  line = list(color = "#009E73", width = 3),
+  marker = list(color = "#D55E00", size = 7),
+  text = ~paste(
+    "Quarter:", format(date, "%Y-%m"),
+    "<br>Default Rate:", percent(default_rate, accuracy = 0.1),
+    "<br>Trend:", trend
+  ),
+  hoverinfo = "text"
+) %>%
+  layout(
+    xaxis = list(
+      title = "Time (Quarter)",
+      showgrid = TRUE,
+      gridcolor = "#E5E5E5"
+    ),
+    yaxis = list(
+      title = "Default Rate (%)",
+      tickformat = ".1%",
+      showgrid = TRUE,
+      gridcolor = "#E5E5E5"
+    ),
+    plot_bgcolor = "white",
+    paper_bgcolor = "white"
+  )
+ 
+
+#Code Explanation: The code is used to generate an interactive chart of default rates over a period of time. The data is cleaned and ordered by date to ensure that the trend is correctly displayed. The code also includes a variable for the trend of default rates, whether they are rising or falling. Plotly is used to make the chart interactive, allowing for better clarity and understanding of the information.
+
+#Insights: The default rates for the years 2020-2023 have shown a slight increase in default rates, though the rates have remained more or less the same. Any increase in the default rates is temporary.
+
+```
+
+[**Credit score is a strong predictor of default risk:**]{.underline}
+
+Credit score is one of the most obvious **default predictors** in the report. The credit score chart demonstrates a **strong downward** trend in default rates as the quality of borrowers increases. This is in line with the definition of borrower credit score in the glossary as a tool for evaluating borrower credit quality. More importantly, the **2019 cohort has lower default rates** compared to the 2007 cohort for nearly all the score bands. This implies that post-crisis lending is dominated by a better quality of borrowers. In essence, low-scoring borrowers should be of interest to risk management.Borrowers with scores **\<660** have default rates **3-5x higher** than those **\>780**. The difference between 2007 and 2019 persists across all bands, with **2019 showing lower default rates by 30-50%** . This implies both risk-based pricing and improved screening post-crisis
+
+```{r, echo=FALSE}
+# Load data
+data_2007 <- readRDS("data_sample_2007Q4.rds")
+data_2019 <- readRDS("data_sample_2019Q4.rds")
+
+# Combine datasets
+bind_data <- bind_rows(
+  data_2007 %>% mutate(year = "2007"),
+  data_2019 %>% mutate(year = "2019")
+)
+
+# Create credit score bands 
+bind_data <- bind_data %>%
+  mutate(score_band = cut(
+    CSCORE_B,
+    breaks = c(0, 660, 700, 740, 780, 850),
+    labels = c("<660", "660–699", "700–739", "740–779", "780+"),
+    include.lowest = TRUE
+  ))
+
+# Calculate default rate correctly
+credit_plot <- bind_data %>%
+  group_by(year, score_band) %>%
+  summarise(
+    default_rate = mean(DEFAULT_FLAG, na.rm = TRUE),
+    n = n(),
+    .groups = "drop"
+  )
+
+# Create chart
+ggplot(credit_plot, aes(x = score_band, y = default_rate, fill = year)) +
+  
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9)) +
+  
+  # Labels on bars
+  geom_text(aes(label = percent(default_rate, accuracy = 0.1)),
+            position = position_dodge(width = 0.9),
+            
+            width = 0.6,
+            vjust = -0.2,
+            size = 2.8) +
+  
+  labs(
+    x = "Credit Score Band",
+    y = "Default Rate (%)",
+    caption = "Source: Fannie Mae Loan Data"
+  ) +
+  
+  scale_y_continuous(labels = percent_format()) +
+  
+  scale_fill_manual(values = c("2007" = "purple", "2019" = "gold")) +
+  
+  theme_minimal(base_size = 13) +
+  theme(
+    panel.grid.major = element_line(color = "#E5E5E5"),
+    panel.grid.minor = element_blank(),
+    axis.title = element_text(face = "bold"),
+    axis.text = element_text(color = "#333333"),
+    legend.title = element_blank()
+  )
+#Code Explanation: The above code combines two datasets, one from 2007 and one from 2019, and divides borrowers into credit score bands for easier comparison. It then proceeds to calculate default rates for each band by using the mean of DEFAULT_FLAG, which is the appropriate method for determining default probability. Finally, it plots a grouped bar chart for easier comparison of default rates between credit score bands and between the two time periods, adding labels for easier reading.
+
+#Key Insights: The default rates decline as credit scores increase, indicating a strong negative relationship between credit scores and default rates. Furthermore, it is observed that default rates are lower for all credit score bands in the 2019 cohort compared to the 2007 cohort, suggesting better quality borrowers and stricter lending standards after the crisis.
+
+```
+
+[**Higher leverage increases default likelihood:**]{.underline}
+
+The LTV analysis also emphasizes the significance of leverage. It is clear from the data that the original LTV ratio measures the relative size of the loan to the initial property value. Therefore, **higher values represent a thinner equity position** for the borrower. It is also clear from the chart that the default rates increase with higher LTV ratios, particularly for the 2007 cohort. Loans with **LTV \> 90%** have disproportionately higher defaults (**2-3 times than those with LTV ≤ 60%**). It is also significant that the **2007 data has a steeper gradient than the 2019 data.**
+
+```{r, echo=FALSE}
+# Create LTV band
+bind_data <- bind_data %>%
+  mutate(
+    ltv_band = cut(
+      OLTV,
+      breaks = c(0, 60, 70, 80, 90, 95, 100),
+      labels = c("<=60", "61–70", "71–80", "81–90", "91–95", "95+"),
+      include.lowest = TRUE
+    )
+  )
+
+# Compute default rate correctly
+ltv_plot <- bind_data %>%
+  group_by(year, ltv_band) %>%
+  summarise(
+    default_rate = mean(DEFAULT_FLAG, na.rm = TRUE),
+    n = n(),
+    .groups = "drop"
+  )
+
+# Plot
+ggplot(ltv_plot, aes(x = ltv_band, y = default_rate, fill = year)) +
+  
+  geom_bar(
+    stat = "identity",
+    position = position_dodge(width = 0.9),
+    width = 0.6
+  ) +
+  
+  # Labels ONLY for 2007 
+  geom_text(
+    data = ltv_plot %>% filter(year == "2007"),
+    aes(label = percent(default_rate, accuracy = 0.1)),
+    position = position_dodge(width = 0.9),
+    vjust = -0.2,
+    size = 2.8
+  ) +
+  
+  labs(
+    x = "Loan-to-Value (LTV) Band",
+    y = "Default Rate (%)",
+    caption = "Source: Fannie Mae Loan Data"
+  ) +
+  
+  scale_y_continuous(labels = percent_format()) +
+  
+  scale_fill_manual(values = c("2007" = "lightpink", "2019" = "lightblue")) +
+  
+  theme_minimal(base_size = 13) +
+  theme(
+    panel.grid.major = element_line(color = "#E5E5E5"),
+    panel.grid.minor = element_blank(),
+    axis.title = element_text(face = "bold"),
+    axis.text = element_text(color = "#333333"),
+    legend.title = element_blank()
+  ) +
+  
+  expand_limits(y = max(ltv_plot$default_rate) + 0.02)
+
+#Code Explanation: This code is designed to group the loans into LTV bands to make leverage level comparison easy. It also computes the default rate for each group by taking the mean of the DEFAULT_FLAG feature. Finally, a grouped bar chart is created to compare how default rates vary across LTV bands and between 2007 and 2019. Labels are added selectively to ensure the chart is not cluttered.
+
+#Key Insights: The default rates increase with LTV bands. It is clear that higher leverage leads to higher default rates. In 2007, higher leverage was a major cause of default rates
+
+
+```
+
+[**Borrower quality has improved significantly since the crisis:**]{.underline}
+
+The animated chart shows the credit score distribution adds one more level of detail to the story by showing that the distribution of the borrower pool has changed over time. **The distribution of the 2019 data has shifted to higher credit scores compared to the 2007 data**, indicating a better quality of borrowers rather than a reduction in default rates for each category. This is a significant difference because it appears that not only are lenders making better loans, but also making loans to better borrowers. That would make the post-crisis portfolio more resistant to bad times. Improvement in portfolio quality is a combination of both **selection** (who to lend to) and **performance** (how they behave).
+
+```{r, echo=FALSE}
+
+# Prepare data 
+# bind_data exists
+# Remove missing values 
+dist_data <- bind_data %>%
+  filter(!is.na(CSCORE_B))
+
+# Create histogram
+p <- ggplot(dist_data, aes(x = CSCORE_B)) +
+  
+  geom_histogram(
+    binwidth = 20,
+    fill = "#1B263B",
+    color = "white",
+    alpha = 0.8
+  ) +
+  
+  labs(
+    x = "Credit Score",
+    y = "Number of Borrowers",
+    caption = "Source: Fannie Mae Loan Data"
+  ) +
+  
+  theme_minimal(base_size = 13) +
+  theme(
+    panel.grid.major = element_line(color = "#E0E1DD"),
+    panel.grid.minor = element_blank(),
+    axis.title = element_text(face = "bold"),
+    axis.text = element_text(color = "#333333")
+  ) +
+  
+  # Animation
+  transition_states(year, transition_length = 2, state_length = 2) +
+  
+  labs(title = "Credit Score Distribution: {closest_state}") +
+  
+  ease_aes("cubic-in-out")
+
+# Animate
+animate(p, nframes = 50, fps = 10) 
+
+#Code Explanation : The code is used to create an animated histogram of borrower credit scores to visualize their distribution over time. It filters out missing values to ensure accurate data and bins the credit scores for easier visualization. The animation is used to switch between 2007 and 2019 to make it easier to understand the change in borrower quality over time.
+
+#Key Insights: The change in the distribution of borrower credit scores indicates a higher credit score in 2019 than in 2007, reflecting an improvement in borrower quality over time. This is due to the financial crisis and the subsequent tightening of lending standards to ensure a safer mortgage portfolio.
+
+
+```
+
+[**Loans with higher interest rates are more likely to default:**]{.underline}
+
+The boxplot for the original interest rates for the defaulted loans and the non-defaulted loans shows that the **original interest rates for the defaulted loans tend to be higher**. The interest rate, therefore, acts as an indicator for the perceived risk for the lender. Median interest rates for defaulted loans are obviously higher than non-defaulted loans. Defaulted loans **exhibit a higher interquartile range**, implying higher variability in the pricing of risks.The gap between the two distributions validates the fact that interest rate is a forward-looking risk indicator.
+
+```{r, echo=FALSE}
+
+# Prepare data
+box_data <- bind_data %>%
+  filter(!is.na(ORIG_RATE), !is.na(DEFAULT_FLAG)) %>%
+  mutate(
+    default_label = ifelse(DEFAULT_FLAG == 1, "Defaulted", "Not Defaulted"),
+    year = factor(year)
+  )
+
+# Plot
+ggplot(box_data, aes(x = default_label, y = ORIG_RATE, fill = default_label)) +
+  
+  geom_boxplot(
+    width = 0.6,
+    outlier.alpha = 0.3
+  ) +
+  
+  # Facet by year 
+  facet_wrap(~year) +
+  
+  labs(
+    x = "Loan Status",
+    y = "Interest Rate (%)",
+    caption = "Source: Fannie Mae Loan Data"
+  ) +
+  
+  scale_fill_manual(values = c(
+    "Not Defaulted" = "lightgreen",
+    "Defaulted" = "orange"
+  )) +
+  
+  theme_minimal(base_size = 13) +
+  theme(
+    panel.grid.major = element_line(color = "#E5E5E5"),
+    panel.grid.minor = element_blank(),
+    axis.title = element_text(face = "bold"),
+    axis.text = element_text(color = "#333333"),
+    legend.position = "none"
+  )
+#Code Explanation: The code compares the interest rate distributions of defaulted and non-defaulted loans. The data is cleaned to exclude any missing values and then split for easier visualization. A box plot is then used to display the distribution of the interest rates. The plot is also faceted to display the interest rates for both 2007 and 2019.
+
+#Key Insights: The interest rates of defaulted loans are higher compared to non-defaulted loan. This suggests that the lender charges interest rates based on the borrower's potential to default. This is true for both 2007 and 2019.
+```
+
+[**Occupancy status of the borrower:**]{.underline}
+
+The **Occupancy Status** may be used to explain default behaviors as well. The glossary defines occupancy status as "principal residence, second home, investor, or unknown." The below chart shows default rates are **higher for non-owner-occupied properties** than for primary residences. This is intuitive and useful from a management perspective because, all else being equal, borrowers are typically more likely to make timely payments on their primary residence. Investor and second-home loans should be watched carefully, then, because they may be riskier from a financial perspective.
+
+```{r, echo=FALSE}
+# Prepare data
+occ_data <- bind_data %>%
+  filter(!is.na(OCC_STAT)) %>%
+  mutate(
+    occupancy = recode(OCC_STAT,
+      "P" = "Primary",
+      "S" = "Second Home",
+      "I" = "Investor",
+      "U" = "Unknown"
+    )
+  )
+
+# Compute default rate
+occ_plot <- occ_data %>%
+  group_by(year, occupancy) %>%
+  summarise(
+    default_rate = mean(DEFAULT_FLAG, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Heatmap
+ggplot(occ_plot, aes(x = year, y = occupancy, fill = default_rate)) +
+  
+  geom_tile(color = "white") +
+  
+  # Add labels inside tiles
+  geom_text(aes(label = percent(default_rate, accuracy = 0.1)),
+            size = 3) +
+  
+  labs(
+    x = "Year",
+    y = "Occupancy Status",
+    fill = "Default Rate",
+    caption = "Source: Fannie Mae Loan Data"
+  ) +
+  
+  scale_fill_gradient(
+    low = "#E0F3F8",
+    high = "#08306B",
+    labels = percent_format()
+  ) +
+  
+  theme_minimal(base_size = 13) +
+  theme(
+    panel.grid = element_blank(),
+    axis.title = element_text(face = "bold"),
+    axis.text = element_text(color = "#333333"),
+    legend.title = element_text(face = "bold")
+  )
+
+#Code Explanation: The provided code sorts the loans by occupancy type by mapping the original categories to more descriptive ones. The code also computes the default rates by taking the mean of DEFAULT_FLAG and displays them using a grouped bar chart. The x-axis labels are added selectively to keep the plot uncluttered. 
+
+#Key Insights: The investor-owned category has a higher default rate compared to primary residences. This indicates that people are more likely to pay their primary residences compared to other properties.
+```
+
+<br>
+
+[**Conclusion:**]{.underline}
+
+The analysis has clearly demonstrated that borrower credit quality, leverage of borrowers, and occupancy status are significant indicators of default rates. In addition, loans made during 2007 experience higher default rates and are riskier than loans made during 2019. This shows that lenders became more cautious during the financial crisis and are providing a safer and more resilient portfolio of loans.
+
+From a risk management perspective, lenders should closely monitor loans made to borrowers with higher leverage and lower credit scores. Although default rates are stable at the moment, default risk is still a significant issue for lenders and is concentrated within specific borrower groups.
+
+In all, this analysis sheds valuable light on default trends for borrowers by making correlations between loans and risk outcomes, allowing lenders to make informed decisions.
